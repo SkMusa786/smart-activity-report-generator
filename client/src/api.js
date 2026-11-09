@@ -1,4 +1,8 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
+const configuredApiUrl = import.meta.env.VITE_API_URL
+if (!configuredApiUrl && import.meta.env.PROD) {
+  throw new Error('VITE_API_URL is required in the production frontend environment.')
+}
+const API_URL = (configuredApiUrl || 'http://localhost:5000').replace(/\/$/, '')
 
 async function request(url, options = {}) {
   const controller = new AbortController()

@@ -38,6 +38,8 @@
 - Environment variable:
   - `VITE_API_URL`: the public Render backend URL, without a trailing slash.
 
+After changing either environment variable, redeploy the affected service. Vercel embeds `VITE_API_URL` during its build; Render reads `CLIENT_ORIGIN` when the backend starts.
+
 Vite variables are public by design and must never contain the Gemini API key.
 
 ## Storage model
