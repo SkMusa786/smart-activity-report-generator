@@ -59,6 +59,7 @@ function App() {
   const [activeSection, setActiveSection] = useState('workspace')
   const [toast, setToast] = useState(null)
   const [finalized, setFinalized] = useState(false)
+  const [exportingFormat, setExportingFormat] = useState(null)
   const inputRef = useRef(null)
 
   const completedPoc = activities.filter((activity) => activity.pocImage).length
@@ -76,8 +77,25 @@ function App() {
   const removeActivity = (id) => {
     setActivities((current) => {
       const activity = current.find((item) => item.id === id)
-      if (activity) URL.revokeObjectURL(activity.preview)
+      if (activity) {
+        URL.revokeObjectURL(activity.preview)
+        if (activity.pocPreview) URL.revokeObjectURL(activity.pocPreview)
+      }
       return current.filter((item) => item.id !== id)
+    })
+    setFinalized(false)
+  }
+
+  const moveActivity = (id, direction) => {
+    setActivities((current) => {
+      const index = current.findIndex((activity) => activity.id === id)
+      const targetIndex = index + direction
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current
+      const next = [...current]
+      const moved = next[index]
+      next[index] = next[targetIndex]
+      next[targetIndex] = moved
+      return next
     })
     setFinalized(false)
   }
@@ -128,7 +146,12 @@ function App() {
       showToast('The POC file content is not a readable image.', 'error')
       return
     }
-    updateActivity(id, { pocImage: file, pocPreview: URL.createObjectURL(file) })
+    setActivities((current) => current.map((activity) => {
+      if (activity.id !== id) return activity
+      if (activity.pocPreview) URL.revokeObjectURL(activity.pocPreview)
+      return { ...activity, pocImage: file, pocPreview: URL.createObjectURL(file) }
+    }))
+    setFinalized(false)
   }
 
   const finalizeReport = () => {
@@ -171,6 +194,8 @@ function App() {
   })
 
   const exportReport = async (format) => {
+    if (exportingFormat) return
+    setExportingFormat(format)
     try {
       const payload = await buildReportPayload()
       const blob = await generateReport(payload, format)
@@ -178,11 +203,18 @@ function App() {
       const link = document.createElement('a')
       link.href = url
       link.download = `social-service-activity-report.${format}`
+      link.style.display = 'none'
+      document.body.appendChild(link)
       link.click()
-      URL.revokeObjectURL(url)
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url)
+        link.remove()
+      }, 1000)
       showToast(`${format.toUpperCase()} report downloaded.`)
     } catch (error) {
       showToast(error.message, 'error')
+    } finally {
+      setExportingFormat(null)
     }
   }
 
@@ -250,12 +282,12 @@ function App() {
                 <div className="upload-icon">↑</div><div><strong>Drop your activity photographs here</strong><p>or <u>browse files</u> from your computer</p></div><span className="upload-hint">JPG, PNG or WEBP · max 8 MB each</span>
               </section>
               <div className="section-toolbar"><div><h2>Activity details <span>{activities.length}</span></h2><p>Enter a clear title and description for each photograph, then attach its POC evidence.</p></div></div>
-              {!activities.length ? <EmptyState onUpload={() => inputRef.current?.click()} /> : <div className="activity-list">{activities.map((activity, index) => <ActivityCard key={activity.id} activity={activity} index={index} onChange={updateActivity} onRemove={removeActivity} onPoc={attachPoc} />)}</div>}
+              {!activities.length ? <EmptyState onUpload={() => inputRef.current?.click()} /> : <div className="activity-list">{activities.map((activity, index) => <ActivityCard key={activity.id} activity={activity} index={index} count={activities.length} onChange={updateActivity} onRemove={removeActivity} onMove={moveActivity} onPoc={attachPoc} />)}</div>}
             </>
           )}
 
           {activeSection === 'report' && <ReportForm report={report} setReport={setReport} onContinue={() => setActiveSection('review')} />}
-          {activeSection === 'review' && <Review activities={activities} report={report} missingPoc={missingPoc} pocPercent={pocPercent} finalized={finalized} onFinalize={submitFinalReport} onExport={exportReport} onGoActivities={() => setActiveSection('workspace')} />}
+          {activeSection === 'review' && <Review activities={activities} report={report} missingPoc={missingPoc} pocPercent={pocPercent} finalized={finalized} exportingFormat={exportingFormat} onFinalize={submitFinalReport} onExport={exportReport} onGoActivities={() => setActiveSection('workspace')} />}
         </div>
       </main>
       {toast && <div className={`toast ${toast.type}`}><span>{toast.type === 'error' ? '!' : '✓'}</span>{toast.message}</div>}
@@ -267,13 +299,13 @@ function EmptyState({ onUpload }) {
   return <div className="empty-state"><div className="empty-art">✦</div><h3>No activities yet</h3><p>Upload photographs to start building your activity report.</p><button className="secondary-button" onClick={onUpload}>Upload first photograph</button></div>
 }
 
-function ActivityCard({ activity, index, onChange, onRemove, onPoc }) {
+function ActivityCard({ activity, index, count, onChange, onRemove, onMove, onPoc }) {
   const pocInput = useRef(null)
   const [confirming, setConfirming] = useState(false)
   const set = (field) => (event) => onChange(activity.id, { [field]: event.target.value })
   return (
     <article className="activity-card">
-      <div className="card-topline"><span className="activity-number">ACTIVITY {String(index + 1).padStart(2, '0')}</span><div className="card-actions"><button className="remove-button" onClick={() => setConfirming(true)}>Remove</button></div></div>
+      <div className="card-topline"><span className="activity-number">ACTIVITY {String(index + 1).padStart(2, '0')}</span><div className="card-actions"><button className="text-button" onClick={() => onMove(activity.id, -1)} disabled={index === 0}>Move up</button><button className="text-button" onClick={() => onMove(activity.id, 1)} disabled={index === count - 1}>Move down</button><button className="remove-button" onClick={() => setConfirming(true)}>Remove</button></div></div>
       <div className="card-grid">
         <div className="photo-column"><img src={activity.preview} alt={activity.title || `Activity ${index + 1}`} /><div className="photo-name" title={activity.file.name}>⌁ {activity.file.name}</div></div>
         <div className="details-column">
@@ -302,8 +334,8 @@ function ReportForm({ report, setReport, onContinue }) {
   return <section className="form-panel"><div className="form-intro"><div className="large-icon">▤</div><div><h2>Report details</h2><p>These details are used on the formal academic cover page and generated reports.</p></div></div><div className="form-grid"><label>College name<input value={report.collegeName} onChange={set('collegeName')} placeholder="Enter college name" /></label><label>Report title<input value={report.title} onChange={set('title')} placeholder="A Report on Social Service Activities" /></label><label>College address<input value={report.collegeAddress} onChange={set('collegeAddress')} placeholder="Full college address" /></label><label>College status<input value={report.collegeStatus} onChange={set('collegeStatus')} placeholder="Autonomous / affiliated" /></label><label>Degree<input value={report.degree} onChange={set('degree')} placeholder="Bachelor of Technology" /></label><label>Branch / Department<input value={report.branch} onChange={set('branch')} placeholder="Computer Science and Engineering" /></label><label>Student name<input value={report.studentName} onChange={set('studentName')} placeholder="Student name" /></label><label>Roll number<input value={report.rollNumber} onChange={set('rollNumber')} placeholder="Roll number" /></label><label>Academic batch / year<input value={report.academicBatch} onChange={set('academicBatch')} placeholder="2022 - 2026" /></label><label>Prepared by<input value={report.preparedBy} onChange={set('preparedBy')} placeholder="Name of report preparer" /></label><label>Reporting period<input value={report.period} onChange={set('period')} placeholder="January - March 2026" /></label><label>College logo<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={setLogo} /></label><label className="full">Overall report description<textarea value={report.description} onChange={set('description')} rows="5" placeholder="Summarize the purpose and outcomes of these activities..." /></label></div><div className="form-actions"><button className="primary-button" onClick={onContinue}>Continue to review <span>→</span></button></div></section>
 }
 
-function Review({ activities, report, missingPoc, pocPercent, finalized, onFinalize, onExport, onGoActivities }) {
-  return <div className="review-layout"><section className="review-main"><div className="review-summary"><div className="review-summary-icon">✓</div><div><small>REPORT OVERVIEW</small><h2>{report.title || 'Untitled report'}</h2><p>{report.collegeName || 'College not specified'} {report.period && ` · ${report.period}`}</p></div></div><div className="review-heading"><div><h2>Activity checklist</h2><p>{activities.length} activities included in this report.</p></div><button className="text-button" onClick={onGoActivities}>← Edit activities</button></div>{activities.length ? <div className="review-list">{activities.map((activity, index) => <div className="review-item" key={activity.id}><img src={activity.preview} alt="" /><div className="review-item-text"><span>ACTIVITY {String(index + 1).padStart(2, '0')}</span><h3>{activity.title || 'Untitled activity'}</h3><p>{activity.description || 'No description added yet.'}</p><small>{activity.date || 'No date'} {activity.location && ` · ${activity.location}`}</small></div><div className={`review-poc ${activity.pocImage ? 'submitted' : 'missing'}`}>{activity.pocImage ? '✓ POC submitted' : '! POC required'}</div></div>)}</div> : <EmptyState onUpload={onGoActivities} />}</section><aside className="review-side"><div className={`completion-card ${missingPoc.length ? 'warning' : 'complete'}`}><div className="completion-ring" style={{ '--percent': `${pocPercent * 3.6}deg` }}><strong>{pocPercent}%</strong></div><h3>{missingPoc.length ? 'POC images pending' : 'All POC images submitted'}</h3><p>{missingPoc.length ? `${missingPoc.length} ${missingPoc.length === 1 ? 'activity needs' : 'activities need'} a POC image before you can finalize.` : 'Every activity has documentary evidence.'}</p>{missingPoc.length > 0 && <ul>{missingPoc.map((activity) => <li key={activity.id}>{activity.title || 'Untitled activity'}</li>)}</ul>}</div><button className="finalize-button" onClick={onFinalize} disabled={!activities.length || missingPoc.length > 0}>{finalized ? '✓ Report submitted' : 'Submit report'}</button><div className="export-card"><h3>Export report</h3><p>Generate the formal academic report with cover page, index and activity pages.</p><button onClick={() => onExport('docx')}>↓ Download Word <small>.docx</small></button><button onClick={() => onExport('pdf')}>↓ Download PDF <small>.pdf</small></button><button onClick={() => onExport('pptx')}>↓ Download PowerPoint <small>.pptx</small></button></div></aside></div>
+function Review({ activities, report, missingPoc, pocPercent, finalized, exportingFormat, onFinalize, onExport, onGoActivities }) {
+  return <div className="review-layout"><section className="review-main"><div className="review-summary"><div className="review-summary-icon">✓</div><div><small>REPORT OVERVIEW</small><h2>{report.title || 'Untitled report'}</h2><p>{report.collegeName || 'College not specified'} {report.period && ` · ${report.period}`}</p></div></div><div className="review-heading"><div><h2>Activity checklist</h2><p>{activities.length} activities included in this report.</p></div><button className="text-button" onClick={onGoActivities}>← Edit activities</button></div>{activities.length ? <div className="review-list">{activities.map((activity, index) => <div className="review-item" key={activity.id}><img src={activity.preview} alt="" /><div className="review-item-text"><span>ACTIVITY {String(index + 1).padStart(2, '0')}</span><h3>{activity.title || 'Untitled activity'}</h3><p>{activity.description || 'No description added yet.'}</p><small>{activity.date || 'No date'} {activity.location && ` · ${activity.location}`}</small></div><div className={`review-poc ${activity.pocImage ? 'submitted' : 'missing'}`}>{activity.pocImage ? '✓ POC submitted' : '! POC required'}</div></div>)}</div> : <EmptyState onUpload={onGoActivities} />}</section><aside className="review-side"><div className={`completion-card ${missingPoc.length ? 'warning' : 'complete'}`}><div className="completion-ring" style={{ '--percent': `${pocPercent * 3.6}deg` }}><strong>{pocPercent}%</strong></div><h3>{missingPoc.length ? 'POC images pending' : 'All POC images submitted'}</h3><p>{missingPoc.length ? `${missingPoc.length} ${missingPoc.length === 1 ? 'activity needs' : 'activities need'} a POC image before you can finalize.` : 'Every activity has documentary evidence.'}</p>{missingPoc.length > 0 && <ul>{missingPoc.map((activity) => <li key={activity.id}>{activity.title || 'Untitled activity'}</li>)}</ul>}</div><button className="finalize-button" onClick={onFinalize} disabled={!activities.length || missingPoc.length > 0}>{finalized ? '✓ Report submitted' : 'Submit report'}</button><div className="export-card"><h3>Export report</h3><p>Generate the formal academic report with cover page, index and activity pages.</p><button disabled={Boolean(exportingFormat)} onClick={() => onExport('docx')}>{exportingFormat === 'docx' ? 'Generating…' : '↓ Download Word'} <small>.docx</small></button><button disabled={Boolean(exportingFormat)} onClick={() => onExport('pdf')}>{exportingFormat === 'pdf' ? 'Generating…' : '↓ Download PDF'} <small>.pdf</small></button><button disabled={Boolean(exportingFormat)} onClick={() => onExport('pptx')}>{exportingFormat === 'pptx' ? 'Generating…' : '↓ Download PowerPoint'} <small>.pptx</small></button></div></aside></div>
 }
 
 export default App

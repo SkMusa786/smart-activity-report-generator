@@ -3,7 +3,7 @@
 ## Local development
 
 1. Create `server/.env` from `server/.env.example`. Gemini variables are optional while manual descriptions are enabled.
-2. Set `VITE_API_URL=http://localhost:5000` in `client/.env`.
+2. Set `VITE_API_URL=http://localhost:5000` in `client/.env` for local development.
 4. Start the API:
 
    ```powershell
@@ -39,6 +39,8 @@
   - `VITE_API_URL`: the public Render backend URL, without a trailing slash.
 
 After changing either environment variable, redeploy the affected service. Vercel embeds `VITE_API_URL` during its build; Render reads `CLIENT_ORIGIN` when the backend starts.
+
+Disable Vercel Deployment Protection for the public production deployment, or configure an appropriate public access policy. If the deployment redirects to `vercel.com/login`, browsers cannot load the frontend bundle and export requests cannot run.
 
 Vite variables are public by design and must never contain the Gemini API key.
 

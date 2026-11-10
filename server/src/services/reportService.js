@@ -5,19 +5,32 @@ import sharp from "sharp";
 
 const IMAGE_FORMATS = ["jpeg", "png", "webp"];
 
+class ReportValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ReportValidationError";
+    this.statusCode = 400;
+  }
+}
+
 function decodeImage(value, fieldName) {
   if (typeof value !== "string" || !value.startsWith("data:image/")) {
-    throw new Error(`${fieldName} must be a data URL image.`);
+    throw new ReportValidationError(`${fieldName} must be a data URL image.`);
   }
   const match = value.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/i);
-  if (!match) throw new Error(`${fieldName} must be a JPG, PNG or WEBP image.`);
+  if (!match) throw new ReportValidationError(`${fieldName} must be a JPG, PNG or WEBP image.`);
   return Buffer.from(match[2], "base64");
 }
 
 async function validateImage(buffer, fieldName) {
-  const metadata = await sharp(buffer).metadata();
-  if (!IMAGE_FORMATS.includes(metadata.format) || !metadata.width || !metadata.height) {
-    throw new Error(`${fieldName} is not a valid JPG, PNG or WEBP image.`);
+  try {
+    const metadata = await sharp(buffer).metadata();
+    if (!IMAGE_FORMATS.includes(metadata.format) || !metadata.width || !metadata.height) {
+      throw new ReportValidationError(`${fieldName} is not a valid JPG, PNG or WEBP image.`);
+    }
+  } catch (error) {
+    if (error instanceof ReportValidationError) throw error;
+    throw new ReportValidationError(`${fieldName} is not a valid JPG, PNG or WEBP image.`);
   }
 }
 
@@ -27,11 +40,11 @@ function safeText(value, fallback = "") {
 
 function validateReport(report) {
   if (!report || !Array.isArray(report.activities) || report.activities.length === 0) {
-    throw new Error("At least one activity is required.");
+    throw new ReportValidationError("At least one activity is required.");
   }
   for (const [index, activity] of report.activities.entries()) {
-    if (!activity.pocImage) throw new Error(`Activity ${index + 1} is missing its POC image.`);
-    if (!activity.photo) throw new Error(`Activity ${index + 1} is missing its photograph.`);
+    if (!activity.pocImage) throw new ReportValidationError(`Activity ${index + 1} is missing its POC image.`);
+    if (!activity.photo) throw new ReportValidationError(`Activity ${index + 1} is missing its photograph.`);
   }
 }
 

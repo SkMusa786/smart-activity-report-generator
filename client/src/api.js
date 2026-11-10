@@ -1,26 +1,31 @@
-const configuredApiUrl = import.meta.env.VITE_API_URL
-if (!configuredApiUrl && import.meta.env.PROD) {
-  throw new Error('VITE_API_URL is required in the production frontend environment.')
-}
-const API_URL = (configuredApiUrl || 'http://localhost:5000').replace(/\/$/, '')
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
+const API_URL = configuredApiUrl?.replace(/\/$/, '')
 
-async function request(url, options = {}) {
+async function request(url, options = {}, timeoutMs = 60_000) {
+  if (!API_URL) {
+    throw new Error('API is not configured. Set VITE_API_URL and restart the frontend.')
+  }
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 60_000)
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(url, { ...options, signal: controller.signal })
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('The server timed out. Please try again.', { cause: error })
-    throw new Error('Unable to reach the backend. Check that the server is running.', { cause: error })
+    throw new Error(`Unable to reach the backend at ${url}. Check that the backend is running and that CORS allows this frontend.`, { cause: error })
   } finally {
     window.clearTimeout(timeout)
   }
 }
 
+async function responseError(response, fallback) {
+  const data = await response.json().catch(() => ({}))
+  return new Error(data.message || `${fallback} (HTTP ${response.status}).`)
+}
+
 async function parseResponse(response) {
   const data = await response.json().catch(() => ({}))
   if (!response.ok || data.success === false) {
-    throw new Error(data.message || 'The server could not process the request.')
+    throw new Error(data.message || `The server could not process the request (HTTP ${response.status}).`)
   }
   return data
 }
@@ -44,10 +49,9 @@ export async function generateReport(report, format) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(report),
-  })
+  }, 180_000)
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || `Unable to generate ${format.toUpperCase()} report.`)
+    throw await responseError(response, `Unable to generate ${format.toUpperCase()} report`)
   }
   return response.blob()
 }
@@ -57,6 +61,6 @@ export async function submitReport(report) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(report),
-  }))
+  }, 120_000))
   return data
 }

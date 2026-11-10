@@ -25,7 +25,11 @@ async function generate(res, report, format) {
     res.send(buffer);
   } catch (error) {
     console.error(`${format.toUpperCase()} report generation error:`, error);
-    res.status(400).json({ success: false, message: error.message || "Report generation failed." });
+    const status = error.statusCode || error.status || 500;
+    res.status(status).json({
+      success: false,
+      message: status < 500 ? error.message : "Unable to generate the report right now."
+    });
   }
 }
 
@@ -35,7 +39,11 @@ router.post("/submit", reportRateLimit, async (req, res) => {
     return res.status(200).json({ success: true, message: "Report validated for this session.", sessionOnly: result.sessionOnly });
   } catch (error) {
     console.error("Report submission error:", error.message);
-    return res.status(400).json({ success: false, message: error.message || "Report submission failed." });
+    const status = error.statusCode || error.status || 500;
+    return res.status(status).json({
+      success: false,
+      message: status < 500 ? error.message : "Unable to submit the report right now."
+    });
   }
 });
 

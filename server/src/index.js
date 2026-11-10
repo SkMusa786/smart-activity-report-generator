@@ -8,10 +8,16 @@ import reportRoutes from "./routes/reportRoutes.js";
 
 const app = express();
 app.set("trust proxy", 1);
-const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
+const configuredOrigins = (process.env.CLIENT_ORIGIN || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+const allowedOrigins = [...new Set([
+  "http://localhost:5173",
+  ...configuredOrigins,
+  "https://smart-activity-report-generator.vercel.app",
+  "https://smart-activity-report-generator-1kz3-l12r371kv.vercel.app"
+])];
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -19,13 +25,13 @@ const corsOptions = {
     return callback(new Error("Origin is not allowed by CORS."));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
+  allowedHeaders: ["Accept", "Content-Type", "Origin", "X-Requested-With"],
   optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
 
-app.use(express.json({ limit: "100mb" }));
+app.use(express.json({ limit: "80mb" }));
 
 app.get("/", (req, res) => {
   res.json({
@@ -46,6 +52,20 @@ app.use("/api/reports", reportRoutes);
 app.use((err, req, res, next) => {
   console.error("Server error:", err.message);
 
+  if (err.message === "Origin is not allowed by CORS.") {
+    return res.status(403).json({
+      success: false,
+      message: "This frontend origin is not allowed to access the API."
+    });
+  }
+
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      message: "Report payload is too large. Reduce the image sizes or number of activities."
+    });
+  }
+
   if (err.code === "LIMIT_FILE_SIZE") {
     return res.status(400).json({
       success: false,
@@ -60,9 +80,9 @@ app.use((err, req, res, next) => {
     });
   }
 
-  res.status(400).json({
+  return res.status(err.statusCode || err.status || 500).json({
     success: false,
-    message: err.message || "Something went wrong."
+    message: err.statusCode || err.status ? err.message : "Something went wrong."
   });
 });
 
