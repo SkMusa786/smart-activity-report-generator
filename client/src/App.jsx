@@ -198,11 +198,11 @@ function App() {
     setExportingFormat(format)
     try {
       const payload = await buildReportPayload()
-      const blob = await generateReport(payload, format)
+      const { blob, filename } = await generateReport(payload, format)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `social-service-activity-report.${format}`
+      link.download = filename
       link.style.display = 'none'
       document.body.appendChild(link)
       link.click()

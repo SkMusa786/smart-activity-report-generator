@@ -18,11 +18,12 @@ async function generate(res, report, format) {
       pdf: "application/pdf",
       pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     };
-    res.set({
+    const filename = `social-service-activity-report.${format}`;
+    res.status(200).set({
       "Content-Type": contentTypes[format],
-      "Content-Disposition": `attachment; filename="social-service-activity-report.${format}"`
-    });
-    res.send(buffer);
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": buffer.length
+    }).send(buffer);
   } catch (error) {
     console.error(`${format.toUpperCase()} report generation error:`, error);
     const status = error.statusCode || error.status || 500;

@@ -8,9 +8,10 @@ import reportRoutes from "./routes/reportRoutes.js";
 
 const app = express();
 app.set("trust proxy", 1);
-const configuredOrigins = (process.env.CLIENT_ORIGIN || "")
+const configuredOrigins = (process.env.FRONTEND_URL || process.env.CLIENT_ORIGIN || "")
   .split(",")
   .map((origin) => origin.trim())
+  .map((origin) => origin.replace(/\/$/, ""))
   .filter(Boolean);
 const allowedOrigins = [...new Set([
   "http://localhost:5173",
@@ -25,7 +26,8 @@ const corsOptions = {
     return callback(new Error("Origin is not allowed by CORS."));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Accept", "Content-Type", "Origin", "X-Requested-With"],
+  allowedHeaders: ["Accept", "Authorization", "Content-Type", "Origin", "X-Requested-With"],
+  exposedHeaders: ["Content-Disposition", "Content-Length", "Content-Type"],
   optionsSuccessStatus: 204
 };
 
@@ -41,6 +43,10 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
+  res.json({ success: true, status: "ok" });
+});
+
+app.get("/api/health", (req, res) => {
   res.json({ success: true, status: "ok" });
 });
 
@@ -86,8 +92,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number.parseInt(process.env.PORT || "5000", 10);
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
